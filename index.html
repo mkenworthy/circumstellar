@@ -1,0 +1,267 @@
+<html>
+  <head>
+    <title>Circumstellar Disk simulations</title>
+    <style>
+      body { margin: 0; }
+      canvas { id:"c"; width: 100%; height: 100% }
+    </style>
+  </head>
+
+<div id="debug">
+  <div>x:<span id="x"></span></div>
+  <div>y:<span id="y"></span></div>
+  <div>z:<span id="z"></span></div>
+</div>
+
+<style>
+#debug {
+  position: absolute;
+  left: 1em;
+  top: 1em;
+  padding: 1em;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-family: monospace;
+}
+</style>
+
+  <body>    
+    <script src="js/three.js"></script>
+    <script src="js/topology.js"></script>
+    <script type='text/javascript' src='js/DAT.GUI.min.js'></script>
+    <script>
+      var scene = new THREE.Scene();
+      var camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 8000 );
+
+      var renderer = new THREE.WebGLRenderer();
+      renderer.setSize( window.innerWidth, window.innerHeight );
+      document.body.appendChild( renderer.domElement );
+
+      // at init time
+      const xElem = document.querySelector('#x');
+      const yElem = document.querySelector('#y');
+      const zElem = document.querySelector('#z');
+
+      // used for calculating World normals
+      // https://stackoverflow.com/questions/16268482/three-js-convert-face-normal-from-local-space-to-world-space
+      var normalMatrix = new THREE.Matrix3(); // create once and reuse
+      var worldNormal = new THREE.Vector3(); // create once and reuse
+      
+
+
+
+      // GUI
+      
+      var gui = new dat.GUI();
+
+      parameters =
+    {
+	x: 0, y: 30, z: 0,
+	color: "#ff0000", // color (change "#" to "0x")
+	opacity: 1, 
+	visible: true,
+	material: "Phong",
+	reset: function() { resetCube() }
+    };
+
+      var parameters = 
+	  {
+	      c: "Hello, GUI!", // string
+	      d: false, // boolean (checkbox)
+	      e: "#ff8800", // color (hex)
+              material: "Phong",
+	      v : 0,    // dummy value, only type is important
+	      w: "...", // dummy value, only type is important
+	      x: 0, y: 0, z: 0
+	  };
+      // gui.add( parameters )
+
+
+      var diskMaterial = gui.add( parameters, 'material', [ "Basic", "Lambert", "Phong", "Wireframe" ] ).name('Material Type').listen();
+      diskMaterial.onChange(function(value) 
+	                    {   updateDisk();   });
+      
+      var stringList = ["Intensity", "Vertical Pol", "Horiz Pol"];
+      gui.add( parameters, 'w', stringList ).name('Observing Mode');
+      
+      gui.open();
+
+
+      function updateDisk()
+      {
+	  var value = parameters.material;
+	  var newMaterial;
+	  if (value == "Basic")
+	      newMaterial = new THREE.MeshBasicMaterial( { color: 0x2255EE } );
+	  else if (value == "Lambert")
+	      newMaterial = new THREE.MeshLambertMaterial( { color: 0x00EE22 } );
+	  else if (value == "Phong")
+	      newMaterial = new THREE.MeshPhongMaterial( { color: 0xEE00AA } );
+	  else // (value == "Wireframe")
+	      newMaterial = new THREE.MeshBasicMaterial( { wireframe: true } );
+	  disk.material = newMaterial;
+	  
+      }
+
+      
+      // galaxy background
+      //
+      // note that it is on a very large internal sphere, and you need to make sure
+      // that the Fog and CameraView has a large enough radius to see them!
+      var geometry_galaxy = new THREE.SphereBufferGeometry( 5000, 60, 40 );
+      
+      // invert the geometry on the x-axis so that all of the faces point inward
+      geometry_galaxy.scale( - 1, 1, 1 );
+
+      // load in the image and wrap it on the sphere
+      var material = new THREE.MeshBasicMaterial( {
+          map: new THREE.TextureLoader().load( 'images/TychoSkymapII.t5_08192x04096.jpg' )
+      } );
+      mesh = new THREE.Mesh( geometry_galaxy, material );
+      scene.add( mesh );
+
+      // basic cube!
+      var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+
+      for ( var i = 0; i < geometry.faces.length; i ++ ) {
+          geometry.faces[ i ].color.setHex( Math.random() * 0xffffff );
+      }
+      var material = new THREE.MeshBasicMaterial( { color: 0xffffff, vertexColors: THREE.FaceColors } );
+
+     // var material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+      var cube = new THREE.Mesh( geometry, material );
+
+
+      // set some facets on cube to yellow
+      var faces = cube.geometry.faces;
+
+      for(var i = 0 ; i < 4; i++){ // faces.length
+          var face = faces[i];
+          var color = new THREE.Color("rgb(255, 255, 0)");
+          face.color = color;
+      }
+
+      
+      for ( var i = 0; i < geometry.faces.length; i ++ ) {
+          geometry.faces[ i ].color.setHex( Math.random() * 0xff );
+      }
+//      cube.geometry.elementsNeedsUpdate = true;
+//      cube.geometry.colorsNeedUpdate = true;
+//    cube.geometry.verticesNeedUpdate = true;
+
+      scene.add( cube );
+      cube.position.x = 2;
+      cube.position.y = 2;
+      camera.position.z = 5;
+
+      console.log(cube);
+
+      // shows the face normals of the cube
+      helper = new THREE.FaceNormalsHelper( cube, 0.1, 0xff0000, 1 );
+      scene.add(helper);
+      
+
+      // circumstellar disk
+      // draw a 2_d shape with radius r_inner and outer radius = 1
+      //
+      var n_radial_points = 5;
+      var n_segments = 8;
+      var points = [];
+      var r_inner = 0.2;
+
+      // make one of two sides of the disk
+
+      for ( var i = r_inner; i <= 1; i += 1./n_radial_points ) {
+          ya = (i - r_inner) * 0.5;
+          yb = ya * Math.pow( i * (1-i), 0.4);
+      	  points.push( new THREE.Vector2( i, -yb ));
+      }
+      // make the other side of the disk
+      for ( var i = 1; i >= r_inner; i -= 1./n_radial_points ) {
+          ya = (i - r_inner) * 0.5;
+          yb = ya * Math.pow( i * (1-i), 0.4);
+	  points.push( new THREE.Vector2( i, yb ));
+      }
+
+      // lathe the 2D curve
+      var geometry = new THREE.LatheGeometry( points, n_segments );
+      var material = new THREE.MeshLambertMaterial({
+          color: 0xdaa520,
+          emissive: 0x111111,
+          vertexColors: THREE.FaceColors,
+      });
+      
+      var disk = new THREE.Mesh( geometry, material);
+//      disk.geometry.colorsNeedUpdate = true;
+  //    disk.geometry.verticesNeedUpdate = true;
+
+      for ( var i = 0; i < 20; i ++ ) {
+          disk.geometry.faces[ i ].color.setHex( Math.random() * 0xffffff );
+      }
+      
+      scene.add( disk );
+      
+      disk.position.x = 0;
+      disk.position.z = 2;
+
+
+       // shows the face normals of the disk
+      helperdisk = new THREE.FaceNormalsHelper( disk, 0.5, 0xffff00, 1 );
+      scene.add(helperdisk);
+ 
+      // spotlights
+      const frontSpot = new THREE.SpotLight(0xeeeece);
+      frontSpot.position.set(0,10,0);
+      scene.add(frontSpot);
+      const frontSpot2 = new THREE.SpotLight(0xddddce);
+      frontSpot2.position.set(10,10,-10);
+      scene.add(frontSpot2);
+
+      // define the animation and then rotate things
+      
+      var animate = function () {
+	  requestAnimationFrame( animate );
+
+          // spin the cube
+	  cube.rotation.x += 0.01;
+	  cube.rotation.y += 0.01;
+
+          // change the colours on the cube
+          for ( var i = 0; i < cube.geometry.faces.length; i ++ ) {
+              cube.geometry.faces[ i ].color.setHex( Math.random() * 0xff );
+          }
+          cube.geometry.colorsNeedUpdate = true;
+
+
+
+      for ( var i = 0; i < disk.geometry.faces.length; i ++ ) {
+          disk.geometry.faces[ i ].color.setHex( Math.random() * 0xffffff );
+      }
+                    disk.geometry.colorsNeedUpdate = true;
+
+	  disk.rotation.x += 0.01;
+	  disk.rotation.z += 0.007;
+
+          
+          // at render or update time
+          facet = disk.geometry.faces[4].normal;
+
+          normalMatrix.getNormalMatrix( disk.matrixWorld );
+          worldNormal.copy( facet ).applyMatrix3( normalMatrix ).normalize();
+
+          xElem.textContent = facet.x.toFixed(3);
+          yElem.textContent = facet.y.toFixed(3);
+          zElem.textContent = facet.z.toFixed(3);
+          helper.update();
+
+          helperdisk.update();
+
+
+          
+          renderer.render( scene, camera );
+      };
+
+      animate();
+    </script>
+  </body>
+</html>

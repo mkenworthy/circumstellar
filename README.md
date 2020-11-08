@@ -1,2 +1,7 @@
 # circumstellar
-3d model of a circumstellar disk in three.js
+
+Adventures in 3d circumstellar disks as toy models in three.js.
+
+
+    python3 -m http.server
+
